@@ -1,0 +1,5 @@
+numpy>=1.26.0
+torch>=2.0.0
+requests>=2.31.0
+vllm>=0.5.0  # o la versión que soporte tu config
+openai>=1.0.0  # para el cliente OpenAI-compatible de vLLM
