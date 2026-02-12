@@ -56,7 +56,7 @@ bt.logging.success(f"✓ Miner activo — UID {MY_UID} — Puerto {PORT}")
 while True:
     metagraph.sync(subtensor=subtensor)
     my_incentive = metagraph.I[MY_UID].item()
-    my_trust     = metagraph.T[MY_UID].item()
+    my_trust     = metagraph.TS[MY_UID].item()
     bt.logging.info(
         f"Bloque: {subtensor.block} | "
         f"UID {MY_UID} | "
