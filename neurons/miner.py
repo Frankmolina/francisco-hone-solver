@@ -1,5 +1,11 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import bittensor as bt
+import time
+from arc_main import ARCSolver
+# ... resto del códigoimport bittensor as bt
 import time
 from arc_main import ARCSolver
 
