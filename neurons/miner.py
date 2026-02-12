@@ -1,19 +1,14 @@
+
 import bittensor as bt
 import time
 from arc_main import ARCSolver
 
 # ─── Configuración ───────────────────────────────────────
-WALLET_NAME = "mi_wallet"       # ← cambia esto por tu wallet real
-HOTKEY_NAME = "default"         # ← cambia esto por tu hotkey real
+WALLET_NAME = "minador_cold"
+HOTKEY_NAME = "minador_hot"
 NETUID      = 5
 PORT        = 8091
-
-VLLM_CONFIG = {
-    "model": "unsloth/Meta-Llama-3.1-8B-Instruct",
-    "dtype": "half",
-    "gpu_memory_utilization": 0.85,
-    "max_model_len": 12000,
-}
+MY_UID      = 123
 
 # ─── Setup ───────────────────────────────────────────────
 bt.logging.set_debug(True)
@@ -23,12 +18,10 @@ subtensor = bt.subtensor(network="finney")
 metagraph = subtensor.metagraph(netuid=NETUID)
 
 bt.logging.info(f"Wallet: {wallet}")
-bt.logging.info(f"UID en SN5: {metagraph.hotkeys.index(wallet.hotkey.ss58_address) if wallet.hotkey.ss58_address in metagraph.hotkeys else 'NO REGISTRADO'}")
+bt.logging.info(f"Hotkey: {wallet.hotkey.ss58_address}")
 
-# ─── Cargar solver (solo UNA vez, fuera del handler) ─────
-solver = ARCSolver(use_vllm=False, vllm_config=VLLM_CONFIG)
-# ↑ use_vllm=False porque vLLM no funciona en Mac M2
-# Para usar el modelo necesitas cambiar ARCSolver a transformers+MPS
+# ─── Cargar solver una sola vez ──────────────────────────
+solver = ARCSolver(use_vllm=False)
 
 # ─── Axon y handler ──────────────────────────────────────
 axon = bt.axon(wallet=wallet, port=PORT)
@@ -50,10 +43,16 @@ axon.attach(forward_fn=solve_arc_task)
 axon.serve(netuid=NETUID, subtensor=subtensor)
 axon.start()
 
-bt.logging.success(f"Miner activo en puerto {PORT} — SN5")
+bt.logging.success(f"✓ Miner activo — UID {MY_UID} — Puerto {PORT}")
 
-# Sin este loop el proceso muere inmediatamente
 while True:
     metagraph.sync(subtensor=subtensor)
-    bt.logging.info(f"Bloque actual: {subtensor.block}")
+    my_incentive = metagraph.I[MY_UID].item()
+    my_trust     = metagraph.T[MY_UID].item()
+    bt.logging.info(
+        f"Bloque: {subtensor.block} | "
+        f"UID {MY_UID} | "
+        f"Incentive: {my_incentive:.6f} | "
+        f"Trust: {my_trust:.6f}"
+    )
     time.sleep(60)
