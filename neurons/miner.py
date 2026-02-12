@@ -1,13 +1,11 @@
+import bittensor as bt
+import time
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import bittensor as bt
-import time
 from arc_main import ARCSolver
-# ... resto del códigoimport bittensor as bt
-import time
-from arc_main import ARCSolver
+from typing import Optional
 
 # ─── Configuración ───────────────────────────────────────
 WALLET_NAME = "minador_cold"
@@ -15,6 +13,11 @@ HOTKEY_NAME = "minador_hot"
 NETUID      = 5
 PORT        = 8091
 MY_UID      = 123
+
+# ─── Synapse personalizado para ARC ──────────────────────
+class ARCSynapse(bt.Synapse):
+    task: Optional[dict] = None
+    predictions: Optional[list] = None
 
 # ─── Setup ───────────────────────────────────────────────
 bt.logging.set_debug(True)
@@ -32,15 +35,14 @@ solver = ARCSolver(use_vllm=False)
 # ─── Axon y handler ──────────────────────────────────────
 axon = bt.Axon(wallet=wallet, port=PORT)
 
-def solve_arc_task(synapse):
+def solve_arc_task(synapse: ARCSynapse) -> ARCSynapse:
     try:
         bt.logging.info("Tarea recibida del validador")
-        task = synapse.task if hasattr(synapse, 'task') else synapse.dict()
-        result = solver.solve(task)
+        result = solver.solve(synapse.task or {})
         synapse.predictions = result
         bt.logging.success(f"Predicciones enviadas: {len(result)} outputs")
     except Exception as e:
-        bt.logging.error(f"Error procesando tarea: {e}")
+        bt.logging.error(f"Error: {e}")
     return synapse
 
 axon.attach(forward_fn=solve_arc_task)
