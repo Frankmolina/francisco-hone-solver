@@ -54,13 +54,16 @@ axon.start()
 bt.logging.success(f"✓ Miner activo — UID {MY_UID} — Puerto {PORT}")
 
 while True:
-    metagraph.sync(subtensor=subtensor)
-    my_incentive = metagraph.I[MY_UID].item()
-    my_trust     = metagraph.TS[MY_UID].item()
-    bt.logging.info(
-        f"Bloque: {subtensor.block} | "
-        f"UID {MY_UID} | "
-        f"Incentive: {my_incentive:.6f} | "
-        f"Trust: {my_trust:.6f}"
-    )
+    try:
+        metagraph.sync(subtensor=subtensor)
+        my_incentive = metagraph.I[MY_UID].item()
+        my_trust     = metagraph.TS[MY_UID].item()
+        bt.logging.info(
+            f"Bloque: {subtensor.block} | "
+            f"UID {MY_UID} | "
+            f"Incentive: {my_incentive:.6f} | "
+            f"Trust: {my_trust:.6f}"
+        )
+    except Exception as e:
+        bt.logging.warning(f"Error en sync, reintentando en 60s: {e}")
     time.sleep(60)
