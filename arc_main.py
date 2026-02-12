@@ -3,8 +3,11 @@ import sys
 import re
 import numpy as np
 from collections import Counter
-from vllm import LLM, SamplingParams
-
+try:
+    from vllm import LLM, SamplingParams
+    VLLM_AVAILABLE = True
+except ImportError:
+    VLLM_AVAILABLE = False
 # ─────────────────────────────────────────────
 # Configuración global
 # ─────────────────────────────────────────────
