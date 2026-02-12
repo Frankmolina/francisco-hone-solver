@@ -19,8 +19,8 @@ MY_UID      = 123
 # ─── Setup ───────────────────────────────────────────────
 bt.logging.set_debug(True)
 
-wallet    = bt.wallet(name=WALLET_NAME, hotkey=HOTKEY_NAME)
-subtensor = bt.subtensor(network="finney")
+wallet    = bt.Wallet(name=WALLET_NAME, hotkey=HOTKEY_NAME)
+subtensor = bt.Subtensor(network="finney")
 metagraph = subtensor.metagraph(netuid=NETUID)
 
 bt.logging.info(f"Wallet: {wallet}")
@@ -30,7 +30,7 @@ bt.logging.info(f"Hotkey: {wallet.hotkey.ss58_address}")
 solver = ARCSolver(use_vllm=False)
 
 # ─── Axon y handler ──────────────────────────────────────
-axon = bt.axon(wallet=wallet, port=PORT)
+axon = bt.Axon(wallet=wallet, port=PORT)
 
 def solve_arc_task(synapse):
     try:
