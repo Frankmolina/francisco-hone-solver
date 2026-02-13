@@ -1,13 +1,30 @@
 import json
 import sys
 import re
+import os
 import numpy as np
 from collections import Counter
 
-VLLM_AVAILABLE = False
+# ─── Detección automática de dispositivo ─────────────────
+def _detect_backend():
+    try:
+        from vllm import LLM, SamplingParams
+        return "vllm"
+    except ImportError:
+        pass
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+    return "cpu"
 
-# ─── Modelo con transformers + MPS (Apple Silicon) ────────
-MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"  # No requiere login en HuggingFace
+BACKEND = _detect_backend()
+MODEL_NAME = os.environ.get("VLLM_MODEL", "unsloth/Meta-Llama-3.1-8B-Instruct")
+print(f"[ARCSolver] Backend detectado: {BACKEND} | Modelo: {MODEL_NAME}")
 
 _model = None
 _tokenizer = None
@@ -16,33 +33,67 @@ def _load_model():
     global _model, _tokenizer
     if _model is not None:
         return
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    import torch
-    print(f"[ARCSolver] Cargando modelo {MODEL_NAME} en MPS...")
-    _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    _model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.float16,
-        device_map="mps"
-    )
-    print("[ARCSolver] Modelo listo en Apple Silicon GPU.")
 
-
-def _generate_mps(prompt: str, temperature: float = 0.3, max_tokens: int = 512) -> str:
-    import torch
-    _load_model()
-    inputs = _tokenizer(prompt, return_tensors="pt").to("mps")
-    with torch.no_grad():
-        outputs = _model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
-            top_p=0.95,
-            pad_token_id=_tokenizer.eos_token_id,
+    if BACKEND == "vllm":
+        from vllm import LLM, SamplingParams
+        gpu_mem = float(os.environ.get("VLLM_GPU_MEMORY_UTIL", "0.8"))
+        max_len = int(os.environ.get("VLLM_MAX_MODEL_LEN", "12000"))
+        dtype   = os.environ.get("VLLM_DTYPE", "half")
+        print(f"[ARCSolver] Cargando vLLM en H200... {MODEL_NAME}")
+        _model = LLM(
+            model=MODEL_NAME,
+            dtype=dtype,
+            gpu_memory_utilization=gpu_mem,
+            max_model_len=max_len,
+            trust_remote_code=True,
         )
-    generated = outputs[0][inputs["input_ids"].shape[1]:]
-    return _tokenizer.decode(generated, skip_special_tokens=True).strip()
+        print("[ARCSolver] vLLM listo.")
+
+    elif BACKEND in ("cuda", "mps"):
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+        device = "cuda" if BACKEND == "cuda" else "mps"
+        print(f"[ARCSolver] Cargando transformers en {device}...")
+        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        _model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16,
+            device_map=device,
+        )
+        print(f"[ARCSolver] Modelo listo en {device}.")
+
+    else:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        print("[ARCSolver] Cargando transformers en CPU (lento)...")
+        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        _model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+        print("[ARCSolver] Modelo listo en CPU.")
+
+
+def _generate(prompt: str, temperature: float = 0.3, max_tokens: int = 512) -> str:
+    _load_model()
+
+    if BACKEND == "vllm":
+        from vllm import SamplingParams
+        params = SamplingParams(temperature=temperature, max_tokens=max_tokens, top_p=0.95)
+        outputs = _model.generate([prompt], params)
+        return outputs[0].outputs[0].text.strip()
+
+    else:
+        import torch
+        device = "cuda" if BACKEND == "cuda" else ("mps" if BACKEND == "mps" else "cpu")
+        inputs = _tokenizer(prompt, return_tensors="pt").to(device)
+        with torch.no_grad():
+            outputs = _model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=temperature > 0,
+                top_p=0.95,
+                pad_token_id=_tokenizer.eos_token_id,
+            )
+        generated = outputs[0][inputs["input_ids"].shape[1]:]
+        return _tokenizer.decode(generated, skip_special_tokens=True).strip()
 
 
 # ─── Utilidades de grid ───────────────────────────────────
@@ -160,8 +211,7 @@ def build_prompt(task, test_input, compact=False):
 # ─── ARCSolver ───────────────────────────────────────────
 class ARCSolver:
     def __init__(self, use_vllm=False, vllm_config=None):
-        self.use_vllm = False  # vLLM no soportado en Mac M2
-        print("[ARCSolver] Modo: transformers + Apple MPS")
+        print(f"[ARCSolver] Inicializando con backend: {BACKEND}")
 
     def _solve_one(self, task, test_input):
         prompt = build_prompt(task, test_input)
@@ -171,7 +221,7 @@ class ARCSolver:
         temperatures = [0.3, 0.6, 0.9]
         for attempt, temp in enumerate(temperatures):
             try:
-                text = _generate_mps(prompt, temperature=temp)
+                text = _generate(prompt, temperature=temp)
                 grid = parse_grid_from_text(text, exp_rows, exp_cols)
                 if grid:
                     print(f"  [✓] Intento {attempt+1} OK (temp={temp})")
